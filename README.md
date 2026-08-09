@@ -27,7 +27,14 @@ Build Android APK → Artifacts** if you would rather not use a release.
 
 ### iPhone, or Android without sideloading — install the web app
 
-Open the deployed site (Settings → Pages in this repository shows the URL) and:
+The web version needs GitHub Pages switched on once, and only a repository admin
+can do that — a workflow is not allowed to. In **Settings → Pages → Build and
+deployment**, set **Source** to **GitHub Actions**. The `Deploy web app`
+workflow then publishes on every push, and tells you the URL. (Until then that
+workflow finishes green and explains this in its summary; the APK is built by a
+separate workflow and is unaffected.)
+
+Once it is live, open the site on your phone and:
 
 - **iPhone:** Share → *Add to Home Screen*
 - **Android:** menu → *Install app*
@@ -113,7 +120,7 @@ Settings → Back up writes a JSON file you can restore on another phone.
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # 146 unit tests over the finance engine
+npm test             # 137 unit tests over the finance engine
 npm run typecheck
 npm run build
 ```
@@ -122,7 +129,7 @@ End-to-end walkthrough in a real browser at phone size:
 
 ```bash
 npm install --no-save playwright && npx playwright install chromium
-node tools/smoke.mjs --shots      # screenshots land in screenshots/
+node tools/smoke.mjs --shots      # 27 checks; screenshots land in screenshots/
 ```
 
 Native builds:

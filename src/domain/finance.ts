@@ -56,43 +56,6 @@ export function paymentForTarget(
 }
 
 /**
- * Whole months until `principal` + level `payment` reaches `target`.
- * `null` means it never gets there within the horizon.
- */
-export function monthsToTarget(
-  target: Cents,
-  principal: Cents,
-  payment: Cents,
-  rate: number,
-  horizon: number = MAX_HORIZON_MONTHS,
-): number | null {
-  if (principal >= target) return 0;
-  if (payment <= 0 && rate <= 0) return null;
-
-  if (rate <= 0) {
-    if (payment <= 0) return null;
-    const months = Math.ceil((target - principal) / payment);
-    return months <= horizon ? months : null;
-  }
-
-  // Closed form: n = log((target·r + pmt) / (principal·r + pmt)) / log(1 + r)
-  const numerator = target * rate + payment;
-  const denominator = principal * rate + payment;
-  if (denominator <= 0 || numerator <= 0) return null;
-
-  const exact = Math.log(numerator / denominator) / Math.log(1 + rate);
-  if (!Number.isFinite(exact) || exact < 0) return null;
-
-  // Step back onto the integer month grid: the closed form assumes continuous
-  // contribution timing, so verify and nudge rather than trusting the ceiling.
-  let months = Math.max(0, Math.floor(exact));
-  while (months <= horizon && futureValue(principal, payment, rate, months) < target) {
-    months += 1;
-  }
-  return months <= horizon ? months : null;
-}
-
-/**
  * Months to clear a debt paying `payment` each month against `rate` interest,
  * while `newCharges` keep landing on it.
  * `null` means the balance never clears (payment does not out-run interest).
@@ -162,33 +125,4 @@ export function paymentToClearDebt(
     else low = mid;
   }
   return high;
-}
-
-/** Total interest paid clearing a balance at a given level payment. */
-export function totalInterestOnDebt(
-  balance: Cents,
-  payment: Cents,
-  rate: number,
-  newCharges: Cents = 0,
-  horizon: number = MAX_HORIZON_MONTHS,
-): Cents | null {
-  if (balance <= 0) return 0;
-  if (payment <= 0) return null;
-
-  let current = balance;
-  let interestPaid = 0;
-  for (let month = 1; month <= horizon; month += 1) {
-    const interest = roundCents(current * rate);
-    interestPaid += interest;
-    current = current + interest + newCharges - payment;
-    if (current <= 0) return roundCents(interestPaid);
-    if (interest + newCharges >= payment) return null;
-  }
-  return null;
-}
-
-/** Effective annual rate implied by a nominal rate compounded monthly. */
-export function effectiveAnnualRate(annualNominalRate: number): number {
-  const r = monthlyRate(annualNominalRate);
-  return Math.pow(1 + r, 12) - 1;
 }

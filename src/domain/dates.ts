@@ -87,24 +87,6 @@ export function endOfMonthISO(key: MonthKey): ISODate {
   return `${key}-${pad2(daysInMonth(year, month))}`;
 }
 
-export function startOfMonthISO(key: MonthKey): ISODate {
-  return `${key}-01`;
-}
-
-export function daysBetween(from: ISODate, to: ISODate): number {
-  const a = Date.parse(`${from}T00:00:00Z`);
-  const b = Date.parse(`${to}T00:00:00Z`);
-  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
-  return Math.round((b - a) / 86_400_000);
-}
-
-export function addDaysISO(date: ISODate, days: number): ISODate {
-  const ms = Date.parse(`${date}T00:00:00Z`);
-  if (Number.isNaN(ms)) return date;
-  const next = new Date(ms + days * 86_400_000);
-  return `${next.getUTCFullYear()}-${pad2(next.getUTCMonth() + 1)}-${pad2(next.getUTCDate())}`;
-}
-
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',

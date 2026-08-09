@@ -560,6 +560,7 @@ function GoalDetail({
   const updateGoal = useStore((s) => s.updateGoal);
   const removeGoal = useStore((s) => s.removeGoal);
   const addContribution = useStore((s) => s.addContribution);
+  const removeContribution = useStore((s) => s.removeContribution);
   const contributions = useStore((s) => s.contributions);
 
   const [depositCents, setDepositCents] = useState(0);
@@ -733,6 +734,17 @@ function GoalDetail({
                 <div className="list__amount">
                   <Money cents={c.amountCents} currency={currency} locale={locale} />
                 </div>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label={`Delete the deposit from ${formatISODate(c.date)}`}
+                  onClick={() => {
+                    removeContribution(c.id);
+                    onToast('Deposit removed');
+                  }}
+                >
+                  ✕
+                </button>
               </div>
             ))}
           </div>

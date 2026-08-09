@@ -203,6 +203,30 @@ async function main() {
     await page.waitForSelector('.toast');
     check('deposit is confirmed', (await page.textContent('.toast'))?.includes('Deposit logged'));
 
+    // A logged deposit moves the goal's balance, so deleting one has to move
+    // it back — otherwise a mistyped amount is stuck in the plan for good.
+    await page.click('.tabbar__item:has-text("Goals")');
+    const meta = () =>
+      page.locator('.goal-card', { hasText: 'House deposit' }).locator('.goal-card__meta').textContent();
+
+    const savedBefore = await meta();
+    check('the deposit landed on the goal', /15K/.test(savedBefore ?? ''), savedBefore ?? '');
+
+    await page.locator('.goal-card', { hasText: 'House deposit' }).getByText('Details').click();
+    await page.waitForSelector('text=Recent deposits');
+    await page.locator('.sheet button[aria-label^="Delete the deposit"]').first().click();
+    await page.waitForSelector('.toast:has-text("Deposit removed")');
+    await page.click('.sheet__head button[aria-label="Close"]');
+    await page.waitForTimeout(150);
+
+    const savedAfter = await meta();
+    check(
+      'deleting a deposit takes it back off the goal',
+      /^₹0\s+of/.test((savedAfter ?? '').trim()),
+      `${savedBefore} → ${savedAfter}`,
+    );
+
+    await page.click('.tabbar__item:has-text("Track")');
     await page.click('button:has-text("＋ Spending")');
     await page.waitForSelector('.sheet__title:has-text("Log spending")');
     await page.locator('.sheet .amount-input input').first().fill('850');

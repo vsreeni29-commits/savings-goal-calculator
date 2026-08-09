@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  addDaysISO,
   addMonths,
-  daysBetween,
   daysInMonth,
   endOfMonthISO,
   formatMonthKey,
@@ -70,18 +68,6 @@ describe('calendar', () => {
     expect(endOfMonthISO('2026-02')).toBe('2026-02-28');
     expect(endOfMonthISO('2024-02')).toBe('2024-02-29');
     expect(endOfMonthISO('2026-04')).toBe('2026-04-30');
-  });
-
-  it('counts days across month and year boundaries', () => {
-    expect(daysBetween('2026-01-01', '2026-01-31')).toBe(30);
-    expect(daysBetween('2026-12-31', '2027-01-01')).toBe(1);
-    expect(daysBetween('2026-03-01', '2026-02-28')).toBe(-1);
-  });
-
-  it('adds days across a leap day without drifting', () => {
-    expect(addDaysISO('2024-02-28', 1)).toBe('2024-02-29');
-    expect(addDaysISO('2024-02-28', 2)).toBe('2024-03-01');
-    expect(addDaysISO('2026-01-01', -1)).toBe('2025-12-31');
   });
 });
 

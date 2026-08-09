@@ -55,17 +55,6 @@ export function useProjection(): Projection {
   return useMemo(() => project(data), [data]);
 }
 
-/**
- * Same projection, but with one or more settings overridden — the engine behind
- * the what-if screen. Returns the untouched plan when nothing is overridden.
- */
-export function useScenario(overrides: Partial<AppData['settings']> | null): Projection {
-  const data = useAppData();
-  return useMemo(() => {
-    if (!overrides) return project(data);
-    return project({ ...data, settings: { ...data.settings, ...overrides } });
-  }, [data, overrides]);
-}
 
 export interface TrackingView {
   streaks: StreakSummary;

@@ -11,6 +11,7 @@ import type {
 } from '../domain/types';
 import { emptyData, newId, parseAppData, serializeAppData } from '../domain/schema';
 import { todayISO } from '../domain/dates';
+import { maxZero } from '../domain/money';
 import { clearRaw, readRaw, writeRaw } from './storage';
 
 /** An entity being created: everything except the id, which the store mints. */
@@ -56,7 +57,6 @@ interface Actions {
 
   exportJson: () => string;
   importJson: (json: string) => { ok: true } | { ok: false; error: string };
-  replaceAll: (data: unknown) => void;
   resetAll: () => Promise<void>;
 }
 
@@ -177,7 +177,21 @@ export const useStore = create<Store>()((set, get) => {
       return id;
     },
     removeContribution: (id) =>
-      commit((state) => ({ contributions: state.contributions.filter((c) => c.id !== id) })),
+      commit((state) => {
+        const removed = state.contributions.find((c) => c.id === id);
+        if (!removed) return {};
+        // Logging a deposit moved the goal's balance, so deleting one has to
+        // move it back — otherwise a mistyped amount is stuck in the plan for
+        // good with no way to correct it.
+        return {
+          contributions: state.contributions.filter((c) => c.id !== id),
+          goals: state.goals.map((g) =>
+            g.id === removed.goalId
+              ? { ...g, savedCents: maxZero(g.savedCents - removed.amountCents) }
+              : g,
+          ),
+        };
+      }),
 
     addSpendLog: (draft) => {
       const id = draft.id ?? newId('spend');
@@ -206,8 +220,6 @@ export const useStore = create<Store>()((set, get) => {
       commit(() => ({ ...parseAppData(raw) }));
       return { ok: true };
     },
-
-    replaceAll: (data) => commit(() => ({ ...parseAppData(data) })),
 
     resetAll: async () => {
       if (saveTimer) {
