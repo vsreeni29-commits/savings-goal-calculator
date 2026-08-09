@@ -225,8 +225,7 @@ export default function Dashboard({
           <div>
             <div className="streak__count">
               {tracking.streaks.current}
-              <span className="small dim" style={{ fontWeight: 500 }}>
-                {' '}
+              <span className="small dim unit">
                 {tracking.streaks.current === 1 ? 'month' : 'months'}
               </span>
             </div>

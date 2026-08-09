@@ -88,7 +88,7 @@ describe('calendar', () => {
 describe('formatting', () => {
   it('renders month keys for humans', () => {
     expect(formatMonthKey('2026-08')).toBe('August 2026');
-    expect(formatMonthKey('2026-08', 'short')).toBe('Aug 26');
+    expect(formatMonthKey('2026-08', 'short')).toBe("Aug '26");
   });
 
   it('describes month spans in plain words', () => {

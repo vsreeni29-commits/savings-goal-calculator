@@ -72,8 +72,7 @@ export default function TrackScreen({ projection }: { projection: Projection }) 
           <div style={{ flex: 1 }}>
             <div className="streak__count">
               {tracking.streaks.current}
-              <span className="small dim" style={{ fontWeight: 500 }}>
-                {' '}
+              <span className="small dim unit">
                 month{tracking.streaks.current === 1 ? '' : 's'} in a row
               </span>
             </div>

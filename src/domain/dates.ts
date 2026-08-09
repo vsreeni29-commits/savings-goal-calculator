@@ -115,7 +115,9 @@ export function formatMonthKey(key: MonthKey, style: 'long' | 'short' = 'long'):
   if (!m) return key;
   const year = m[1] ?? '';
   const name = MONTH_NAMES[Number(m[2]) - 1] ?? key;
-  return style === 'long' ? `${name} ${year}` : `${name.slice(0, 3)} ${year.slice(2)}`;
+  // The apostrophe matters: "Feb 29" reads as a day of the month, "Feb '29"
+  // can only be a year.
+  return style === 'long' ? `${name} ${year}` : `${name.slice(0, 3)} '${year.slice(2)}`;
 }
 
 export function formatISODate(date: ISODate, style: 'long' | 'short' = 'long'): string {

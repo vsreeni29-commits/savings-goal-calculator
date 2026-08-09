@@ -1006,6 +1006,13 @@ input, select, textarea {
 /* --------------------------------------------------------------- helpers -- */
 
 .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+
+/* A unit trailing a big number. Whitespace between inline elements collapses
+   at a line break, so the gap is set here rather than typed as a space. */
+.unit {
+  margin-left: 0.35em;
+  font-weight: 500;
+}
 .dim { color: var(--text-dim); }
 .faint { color: var(--text-faint); }
 .good { color: var(--good); }

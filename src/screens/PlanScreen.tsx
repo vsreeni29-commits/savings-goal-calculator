@@ -184,10 +184,7 @@ export default function PlanScreen({ projection }: { projection: Projection }) {
                 currency={currency}
                 locale={locale}
               />
-              <span className="small dim" style={{ fontWeight: 500 }}>
-                {' '}
-                {viewLabel(viewMode)}
-              </span>
+              <span className="small dim unit">{viewLabel(viewMode)}</span>
             </div>
             <div className="small dim" style={{ marginTop: 6 }}>
               That is{' '}
