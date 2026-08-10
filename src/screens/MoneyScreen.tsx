@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react';
 import type { Projection } from '../domain/engine';
 import { debtHint, monthlyExpenseCents, toMonthlyCents } from '../domain/engine';
-import type { AccountKind, Debt, ExpenseItem, Frequency, IncomeSource } from '../domain/types';
+import type {
+  AccountKind,
+  Debt,
+  ExpenseItem,
+  Frequency,
+  Goal,
+  IncomeSource,
+} from '../domain/types';
 import { EXPENSE_CATEGORIES } from '../domain/types';
 import { useStore } from '../store/useStore';
 import { formatMoney, formatRate } from '../domain/format';
@@ -306,6 +313,7 @@ function IncomeEditor({
 function SpendingSection({ onToast }: { onToast: (message: string) => void }) {
   const expenses = useStore((s) => s.expenses);
   const debts = useStore((s) => s.debts);
+  const goals = useStore((s) => s.goals);
   const addExpense = useStore((s) => s.addExpense);
   const updateExpense = useStore((s) => s.updateExpense);
   const removeExpense = useStore((s) => s.removeExpense);
@@ -388,6 +396,7 @@ function SpendingSection({ onToast }: { onToast: (message: string) => void }) {
                           {item.name}{' '}
                           {item.account === 'credit' && <Chip>card</Chip>}
                           {item.essential && <Chip tone="accent">must pay</Chip>}
+                          {item.endsWithGoalId && <Chip tone="good">ends with a goal</Chip>}
                         </div>
                         <div className="list__meta">
                           {formatMoney(item.amountCents, currency, locale)}{' '}
@@ -416,6 +425,7 @@ function SpendingSection({ onToast }: { onToast: (message: string) => void }) {
         <ExpenseEditor
           expense={editing === 'new' ? null : editing}
           debts={debts}
+          goals={goals.filter((g) => !g.archived)}
           currency={currency}
           onClose={() => setEditing(null)}
           onSave={(fields) => {
@@ -446,6 +456,7 @@ function SpendingSection({ onToast }: { onToast: (message: string) => void }) {
 function ExpenseEditor({
   expense,
   debts,
+  goals,
   currency,
   onClose,
   onSave,
@@ -453,6 +464,7 @@ function ExpenseEditor({
 }: {
   expense: ExpenseItem | null;
   debts: Debt[];
+  goals: Goal[];
   currency: string;
   onClose: () => void;
   onSave: (fields: Omit<ExpenseItem, 'id'>) => void;
@@ -466,6 +478,10 @@ function ExpenseEditor({
   const [debtId, setDebtId] = useState(expense?.debtId ?? '');
   const [essential, setEssential] = useState(expense?.essential ?? false);
   const [active, setActive] = useState(expense?.active ?? true);
+  const [endsWithGoal, setEndsWithGoal] = useState(Boolean(expense?.endsWithGoalId));
+  const [endsWithGoalId, setEndsWithGoalId] = useState(
+    expense?.endsWithGoalId ?? goals[0]?.id ?? '',
+  );
   const [touched, setTouched] = useState(false);
 
   const cards = debts.filter((d) => d.active && d.revolving);
@@ -493,6 +509,7 @@ function ExpenseEditor({
                 category,
                 account,
                 debtId: account === 'credit' && debtId ? debtId : undefined,
+                endsWithGoalId: endsWithGoal && endsWithGoalId ? endsWithGoalId : undefined,
                 essential,
                 active,
               });
@@ -576,6 +593,32 @@ function ExpenseEditor({
         label="Cannot be cut"
         hint="Protects it from the trim-spending slider on the What-if screen."
       />
+
+      {goals.length > 0 && (
+        <>
+          <div className="divider" />
+          <Toggle
+            checked={endsWithGoal}
+            onChange={setEndsWithGoal}
+            label="This stops when a goal is reached"
+            hint="For a loan EMI you are saving to preclose: once that goal is funded this payment ends, and the money joins the pool for your other goals."
+          />
+          {endsWithGoal && (
+            <Field
+              label="Which goal ends it"
+              hint="The expense keeps going until that goal is fully funded, then stops the month after."
+            >
+              <Select
+                value={endsWithGoalId}
+                onChange={setEndsWithGoalId}
+                options={goals.map((g) => ({ value: g.id, label: `${g.emoji} ${g.name}` }))}
+              />
+            </Field>
+          )}
+        </>
+      )}
+
+      <div className="divider" />
       <Toggle checked={active} onChange={setActive} label="Counting this" />
     </Sheet>
   );

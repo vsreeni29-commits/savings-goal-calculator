@@ -41,6 +41,7 @@ import {
 } from './dates';
 import { MAX_HORIZON_MONTHS, monthlyRate, paymentForTarget } from './finance';
 import type {
+  AccountKind,
   AllocationStrategy,
   AppData,
   Debt,
@@ -143,6 +144,12 @@ export interface GoalProjection {
   progressRatio: number;
   /** Months to finish if this were the only goal taking the whole pool. */
   soloMonths: number | null;
+  /**
+   * Monthly spending that stops once this goal is funded — a loan EMI you are
+   * saving to preclose, say. That money returns to the pool from the following
+   * month and speeds up everything else.
+   */
+  freesMonthlyCents: Cents;
   totalContributedCents: Cents;
   totalGrowthCents: Cents;
 }
@@ -211,39 +218,103 @@ export function monthlyExpenseCents(
   );
 }
 
-/** Monthly credit-card spending grouped by the card it lands on. */
-function creditChargesByDebt(
-  expenses: readonly ExpenseItem[],
-  debts: readonly Debt[],
-): { byDebt: Map<string, Cents>; unlinked: Cents } {
-  const revolving = debts.filter((d) => d.active && d.revolving);
+/**
+ * One recurring expense, resolved down to what the simulation actually needs:
+ * a monthly amount, where it lands, and what (if anything) ends it.
+ */
+interface ExpenseLine {
+  monthlyCents: Cents;
+  /** The card it is charged to, or undefined when it leaves cash directly. */
+  debtId: string | undefined;
+  account: AccountKind;
+  endsWithGoalId: string | undefined;
+}
+
+export function buildExpenseLines(data: AppData): ExpenseLine[] {
+  const revolving = data.debts.filter((d) => d.active && d.revolving);
   const fallbackId = revolving[0]?.id;
-  const valid = new Set(revolving.map((d) => d.id));
+  const validCards = new Set(revolving.map((d) => d.id));
+  const liveGoals = new Set(activeGoals(data.goals).map((g) => g.id));
 
+  const out: ExpenseLine[] = [];
+  for (const e of data.expenses) {
+    if (!e.active) continue;
+    const monthlyCents = toMonthlyCents(e.amountCents, e.frequency);
+    // Card spending with no card to carry it has to come out of cash instead.
+    const debtId =
+      e.account === 'credit' ? (e.debtId && validCards.has(e.debtId) ? e.debtId : fallbackId) : undefined;
+    out.push({
+      monthlyCents,
+      debtId,
+      account: e.account,
+      // A link to a goal that is gone or archived would end the expense on a
+      // date that never arrives, so it is dropped rather than trusted.
+      endsWithGoalId:
+        e.endsWithGoalId && liveGoals.has(e.endsWithGoalId) ? e.endsWithGoalId : undefined,
+    });
+  }
+  return out;
+}
+
+interface ExpenseTotals {
+  /** Leaves the bank account this month. */
+  cashCents: Cents;
+  /** Lands on a card this month, keyed by card id. */
+  byDebt: Map<string, Cents>;
+  /** Card spending that had no card and so was counted as cash. */
+  unlinkedCents: Cents;
+  creditCents: Cents;
+  debitCents: Cents;
+}
+
+function totalExpenses(lines: readonly ExpenseLine[], ended: ReadonlySet<string>): ExpenseTotals {
   const byDebt = new Map<string, Cents>();
-  let unlinked = 0;
+  let cashCents = 0;
+  let unlinkedCents = 0;
+  let creditCents = 0;
+  let debitCents = 0;
 
-  for (const e of expenses) {
-    if (!e.active || e.account !== 'credit') continue;
-    const monthly = toMonthlyCents(e.amountCents, e.frequency);
-    const target = e.debtId && valid.has(e.debtId) ? e.debtId : fallbackId;
-    if (!target) {
-      // No card exists to carry this spending, so it has to come out of cash.
-      unlinked = addCents(unlinked, monthly);
+  for (const line of lines) {
+    if (line.endsWithGoalId && ended.has(line.endsWithGoalId)) continue;
+    if (line.account === 'credit') {
+      creditCents = addCents(creditCents, line.monthlyCents);
+      if (line.debtId) {
+        byDebt.set(line.debtId, addCents(byDebt.get(line.debtId) ?? 0, line.monthlyCents));
+        continue;
+      }
+      unlinkedCents = addCents(unlinkedCents, line.monthlyCents);
+      cashCents = addCents(cashCents, line.monthlyCents);
       continue;
     }
-    byDebt.set(target, addCents(byDebt.get(target) ?? 0, monthly));
+    debitCents = addCents(debitCents, line.monthlyCents);
+    cashCents = addCents(cashCents, line.monthlyCents);
   }
 
-  return { byDebt, unlinked };
+  return { cashCents, byDebt, unlinkedCents, creditCents, debitCents };
+}
+
+/**
+ * Goals that are already fully funded before the plan even starts — their
+ * linked expenses have already stopped.
+ */
+function alreadyFundedGoalIds(data: AppData): Set<string> {
+  return new Set(
+    activeGoals(data.goals)
+      .filter((g) => g.savedCents >= g.targetCents)
+      .map((g) => g.id),
+  );
 }
 
 export function computeCashFlow(data: AppData): CashFlowSummary {
   const settings = data.settings;
   const incomeCents = monthlyIncomeCents(data.income);
-  const debitExpenseCents = monthlyExpenseCents(data.expenses, 'debit');
-  const creditExpenseCents = monthlyExpenseCents(data.expenses, 'credit');
-  const { byDebt, unlinked } = creditChargesByDebt(data.expenses, data.debts);
+
+  const lines = buildExpenseLines(data);
+  const totals = totalExpenses(lines, alreadyFundedGoalIds(data));
+  const debitExpenseCents = totals.debitCents;
+  const creditExpenseCents = totals.creditCents;
+  const byDebt = totals.byDebt;
+  const unlinked = totals.unlinkedCents;
 
   // Mirror exactly what the simulation does to each card in its first month —
   // interest lands, this month's card spending lands, and only then is the
@@ -555,7 +626,12 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
   );
 
   const cashFlow = computeCashFlow(data);
-  const { byDebt: chargeMap } = creditChargesByDebt(data.expenses, data.debts);
+
+  // Expenses are re-totalled whenever a goal that ends one lands, so the money
+  // an EMI was eating becomes spare from the following month.
+  const expenseLines = buildExpenseLines(data);
+  const endedGoalIds = alreadyFundedGoalIds(data);
+  let expenses = totalExpenses(expenseLines, endedGoalIds);
 
   const goalStates: GoalState[] = activeGoals(data.goals)
     .slice()
@@ -577,7 +653,7 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
     .map((debt) => ({
       debt,
       balance: maxZero(debt.balanceCents),
-      charges: debt.revolving ? chargeMap.get(debt.id) ?? 0 : 0,
+      charges: debt.revolving ? expenses.byDebt.get(debt.id) ?? 0 : 0,
       rate: monthlyRate(debt.aprRate),
       clearedIndex: debt.balanceCents <= 0 ? startIndex : null,
       interestPaid: 0,
@@ -594,7 +670,28 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
   const bufferCents = maxZero(settings.bufferCents);
 
   const incomeCents = cashFlow.incomeCents;
-  const cashExpenseCents = cashFlow.debitExpenseCents + cashFlow.unlinkedCreditExpenseCents;
+
+  /**
+   * Applies any goal that finished in an earlier month: its linked expenses
+   * stop, and the money they were taking joins the pool from here on.
+   * Deliberately a month behind — the month a goal completes, that month's
+   * payment has already gone out.
+   */
+  const releaseFinishedExpenses = (index: number): void => {
+    let changed = false;
+    for (const g of goalStates) {
+      if (g.completedIndex === null || endedGoalIds.has(g.goal.id)) continue;
+      if (g.startedComplete || g.completedIndex < index) {
+        endedGoalIds.add(g.goal.id);
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    expenses = totalExpenses(expenseLines, endedGoalIds);
+    for (const d of debtStates) {
+      d.charges = d.debt.revolving ? expenses.byDebt.get(d.debt.id) ?? 0 : 0;
+    }
+  };
 
   let totalInterest = 0;
   let totalGrowth = 0;
@@ -606,6 +703,7 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
 
   for (let step = 0; step < horizon; step += 1) {
     const index = startIndex + step;
+    releaseFinishedExpenses(index);
 
     // --- 1. Cards accrue interest and absorb this month's card spending -----
     let monthInterest = 0;
@@ -629,7 +727,7 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
       return due;
     });
 
-    let cash = incomeCents - cashExpenseCents - minimumsDue - bufferCents;
+    let cash = incomeCents - expenses.cashCents - minimumsDue - bufferCents;
 
     if (cash < 0) {
       // The month does not balance. Real people put the gap on a card; if
@@ -797,6 +895,11 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
       deadlineMonth,
       progressRatio,
       soloMonths,
+      freesMonthlyCents: sumCents(
+        expenseLines
+          .filter((line) => line.endsWithGoalId === g.goal.id)
+          .map((line) => line.monthlyCents),
+      ),
       totalContributedCents: g.contributed,
       totalGrowthCents: g.growth,
     };

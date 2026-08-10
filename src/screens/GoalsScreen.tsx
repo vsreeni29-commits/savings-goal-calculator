@@ -287,6 +287,16 @@ function GoalRow({
         )}
       </div>
 
+      {(result?.freesMonthlyCents ?? 0) > 0 && (
+        <div className="tiny good" style={{ marginTop: 8 }}>
+          ↑ Frees{' '}
+          <strong className="num">
+            {formatMoney(perView(result?.freesMonthlyCents ?? 0, viewMode), currency, locale)}
+          </strong>{' '}
+          {viewLabel(viewMode)} once it lands
+        </div>
+      )}
+
       <div className="row" style={{ marginTop: 10, gap: 8 }}>
         <button
           type="button"
@@ -671,7 +681,37 @@ function GoalDetail({
           }
           hint="if it had every spare rupee"
         />
+        {(result?.freesMonthlyCents ?? 0) > 0 && (
+          <Metric
+            label="Frees up"
+            value={formatMoney(
+              perView(result?.freesMonthlyCents ?? 0, viewMode),
+              currency,
+              locale,
+            )}
+            hint={`${viewLabel(viewMode)} once this lands`}
+            tone="good"
+          />
+        )}
       </div>
+
+      {(result?.freesMonthlyCents ?? 0) > 0 && (
+        <div className="notice notice--info">
+          <span className="notice__glyph" aria-hidden="true">
+            🔓
+          </span>
+          <div>
+            <div className="notice__title">
+              Finishing this frees{' '}
+              {formatMoney(result?.freesMonthlyCents ?? 0, currency, locale)} a month
+            </div>
+            <div className="notice__detail">
+              Spending tied to this goal stops the month after it lands, and that money is shared
+              across your other goals — the plan already counts on it.
+            </div>
+          </div>
+        </div>
+      )}
 
       {(result?.shortfallMonthlyCents ?? 0) > 0 && (
         <div className="notice notice--warning">

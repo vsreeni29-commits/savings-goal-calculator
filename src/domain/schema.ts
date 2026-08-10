@@ -161,6 +161,10 @@ export function parseExpense(input: unknown): ExpenseItem | null {
     category: str(input.category, EXPENSE_CATEGORIES[EXPENSE_CATEGORIES.length - 1] ?? 'Other', 40),
     account: oneOf(input.account, ACCOUNTS, 'debit'),
     debtId: typeof input.debtId === 'string' && input.debtId ? input.debtId.slice(0, 64) : undefined,
+    endsWithGoalId:
+      typeof input.endsWithGoalId === 'string' && input.endsWithGoalId
+        ? input.endsWithGoalId.slice(0, 64)
+        : undefined,
     essential: bool(input.essential, false),
     active: bool(input.active, true),
   };
@@ -289,11 +293,14 @@ export function parseAppData(input: unknown): AppData {
     version: CURRENT_DATA_VERSION,
     goals,
     income: parseList(input.income, parseIncome),
-    // A card that no longer exists would silently swallow the expense, so the
-    // link is cleared and the engine falls back to the primary card.
-    expenses: expenses.map((e) =>
-      e.debtId && !debtIds.has(e.debtId) ? { ...e, debtId: undefined } : e,
-    ),
+    // A link to something that no longer exists would either swallow the
+    // expense or end it on a date that never comes, so both are cleared here.
+    expenses: expenses.map((e) => ({
+      ...e,
+      debtId: e.debtId && debtIds.has(e.debtId) ? e.debtId : undefined,
+      endsWithGoalId:
+        e.endsWithGoalId && goalIds.has(e.endsWithGoalId) ? e.endsWithGoalId : undefined,
+    })),
     debts,
     // Contributions to a deleted goal cannot be attributed to anything.
     contributions: parseList(input.contributions, parseContribution).filter((c) =>

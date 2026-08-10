@@ -60,6 +60,14 @@ export interface ExpenseItem {
   account: AccountKind;
   /** Which card credit spending is charged to. Falls back to the first debt. */
   debtId?: string;
+  /**
+   * The expense stops once this goal is fully funded.
+   *
+   * This is what makes a loan-preclosure goal work: the EMI is an expense, the
+   * lump sum you are saving to clear it is a goal, and the month after that
+   * goal lands the EMI stops and its money joins the pool for everything else.
+   */
+  endsWithGoalId?: string;
   /** Essential spending is protected from the "trim spending" what-if lever. */
   essential: boolean;
   active: boolean;

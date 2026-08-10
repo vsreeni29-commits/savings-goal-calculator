@@ -193,6 +193,29 @@ async function main() {
     check('debt is saved', await page.isVisible('text=HDFC card'));
     await shot(page, '05-money');
 
+    console.log('\nExpenses that end with a goal');
+    // The loan-preclosure case: tie the living-costs expense to a goal and the
+    // plan should say what finishing that goal frees up.
+    await page.click('.tabbar__item:has-text("Money")');
+    await page.click('.segmented__item:has-text("Spending")');
+    await page.click('text=Monthly living costs');
+    await page.waitForSelector('.sheet__title:has-text("Edit expense")');
+    await page.click('.sheet [role="switch"]:near(:text("This stops when a goal is reached"))');
+    await page.waitForSelector('text=Which goal ends it');
+    await page.selectOption('.sheet select >> nth=-1', { label: '🎯 House deposit' });
+    await page.click('.sheet__foot button:has-text("Save")');
+    await page.waitForSelector('.toast:has-text("Expense updated")');
+    check('the link is shown on the expense', await page.isVisible('text=ends with a goal'));
+
+    await page.click('.tabbar__item:has-text("Goals")');
+    const frees = page.locator('.goal-card', { hasText: 'House deposit' }).locator('text=/Frees/');
+    check('the goal says what it frees up', await frees.isVisible());
+    check(
+      'the freed amount matches the expense',
+      /60,000/.test((await frees.textContent()) ?? ''),
+      (await frees.textContent()) ?? '',
+    );
+
     console.log('\nTracking');
     await page.click('.tabbar__item:has-text("Track")');
     await page.waitForSelector('text=What you actually did');

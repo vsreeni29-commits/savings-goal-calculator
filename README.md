@@ -64,6 +64,13 @@ that deadline demands; whatever is left over is shared by the rule you pick:
 | Split | Shares it out, weighted by priority |
 | Quick wins | Finishes whichever goal is closest to done |
 
+**Knows that paying something off frees the money up.** An expense can be tied
+to a goal, so it stops the month after that goal is funded. That is what makes a
+loan preclosure work properly: the EMI is an expense, the lump sum you are
+saving to clear it is a goal, and once you reach it the EMI stops and its money
+is shared across everything else — the plan rebalances itself and every later
+date moves in. Each goal shows what it unlocks.
+
 **Takes debt seriously.** A credit card accrues interest, absorbs the spending
 you charge to it, and takes its minimum payment before anything can be saved.
 You choose how much spare cash goes at the debt above the minimums, and whether
@@ -98,6 +105,11 @@ behaves:
 5. The rest is shared across goals — deadlines first, then by your chosen rule.
 6. Goal balances earn their return, then the month's contribution lands.
 
+Expenses tied to a goal that finished in an earlier month are dropped from step
+2, which is what frees a precleared loan's EMI back into the pool. It is a month
+behind on purpose: in the month a goal completes, that month's payment has
+already left your account.
+
 A few properties the code holds itself to, each pinned by a test:
 
 - **Money is integer minor units everywhere.** No floating-point currency, and
@@ -120,7 +132,7 @@ Settings → Back up writes a JSON file you can restore on another phone.
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # 137 unit tests over the finance engine
+npm test             # 145 unit tests over the finance engine
 npm run typecheck
 npm run build
 ```
@@ -129,7 +141,7 @@ End-to-end walkthrough in a real browser at phone size:
 
 ```bash
 npm install --no-save playwright && npx playwright install chromium
-node tools/smoke.mjs --shots      # 27 checks; screenshots land in screenshots/
+node tools/smoke.mjs --shots      # 30 checks; screenshots land in screenshots/
 ```
 
 Native builds:

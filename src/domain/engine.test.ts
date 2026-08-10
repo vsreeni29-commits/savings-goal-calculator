@@ -533,6 +533,143 @@ describe('debt', () => {
   });
 });
 
+describe('expenses that end when a goal lands', () => {
+  // The loan-preclosure case: the EMI is an expense, the lump sum to clear the
+  // loan is a goal, and once that goal is funded the EMI stops and its money
+  // joins everything else.
+  const preclosure = () =>
+    makeData({
+      goals: [
+        makeGoal({ id: 'payoff', name: 'Loan closure', targetCents: 4_000_000, priority: 1 }),
+        makeGoal({ id: 'later', name: 'Marriage', targetCents: 6_000_000, priority: 2 }),
+      ],
+      income: [makeIncome({ amountCents: 10_000_000 })],
+      expenses: [
+        makeExpense({ id: 'living', amountCents: 6_000_000 }),
+        makeExpense({ id: 'emi', amountCents: 2_000_000, endsWithGoalId: 'payoff' }),
+      ],
+    });
+
+  it('counts the expense while the goal is still being saved for', () => {
+    const p = project(preclosure());
+    // 10M in, 6M living, 2M EMI, so 2M a month is spare to start with.
+    expect(p.cashFlow.toGoalsCents).toBe(2_000_000);
+    expect(goalById(p, 'payoff').monthsToComplete).toBe(2);
+  });
+
+  it('frees the money the month after the goal is funded', () => {
+    const p = project(preclosure());
+    // Months 1-2 fund the closure at 2M. The EMI still goes out in month 2,
+    // the month the goal completes — that payment had already left.
+    expect(p.months[1]?.contributedCents).toBe(2_000_000);
+    // From month 3 the EMI is gone, so 4M a month goes to the next goal,
+    // which needs 6M and therefore lands in month 4.
+    expect(p.months[2]?.contributedCents).toBe(4_000_000);
+    expect(goalById(p, 'later').monthsToComplete).toBe(4);
+  });
+
+  it('reports how much each goal frees up', () => {
+    const p = project(preclosure());
+    expect(goalById(p, 'payoff').freesMonthlyCents).toBe(2_000_000);
+    expect(goalById(p, 'later').freesMonthlyCents).toBe(0);
+  });
+
+  it('finishes sooner than the same plan without the link', () => {
+    const linked = project(preclosure());
+    const unlinked = project(
+      makeData({
+        goals: preclosure().goals,
+        income: preclosure().income,
+        expenses: preclosure().expenses.map((e) => ({ ...e, endsWithGoalId: undefined })),
+      }),
+    );
+    expect(unlinked.monthsToAllGoals).toBe(5);
+    expect(linked.monthsToAllGoals).toBe(4);
+  });
+
+  it('treats a goal funded before the plan starts as already ended', () => {
+    const p = project(
+      makeData({
+        goals: [
+          makeGoal({ id: 'payoff', targetCents: 4_000_000, savedCents: 4_000_000 }),
+          makeGoal({ id: 'later', targetCents: 6_000_000, priority: 2 }),
+        ],
+        income: [makeIncome({ amountCents: 10_000_000 })],
+        expenses: [
+          makeExpense({ id: 'living', amountCents: 6_000_000 }),
+          makeExpense({ id: 'emi', amountCents: 2_000_000, endsWithGoalId: 'payoff' }),
+        ],
+      }),
+    );
+    expect(p.cashFlow.toGoalsCents).toBe(4_000_000);
+    expect(goalById(p, 'later').monthsToComplete).toBe(2);
+  });
+
+  it('keeps paying an expense tied to an archived goal', () => {
+    // Archiving a goal abandons it rather than achieving it, so the expense
+    // it was going to end must carry on.
+    const p = project(
+      makeData({
+        goals: [
+          makeGoal({ id: 'payoff', targetCents: 4_000_000, archived: true }),
+          makeGoal({ id: 'later', targetCents: 6_000_000 }),
+        ],
+        income: [makeIncome({ amountCents: 10_000_000 })],
+        expenses: [
+          makeExpense({ id: 'living', amountCents: 6_000_000 }),
+          makeExpense({ id: 'emi', amountCents: 2_000_000, endsWithGoalId: 'payoff' }),
+        ],
+      }),
+    );
+    expect(p.cashFlow.toGoalsCents).toBe(2_000_000);
+    expect(goalById(p, 'later').monthsToComplete).toBe(3);
+  });
+
+  it('stops card spending that is tied to a goal too', () => {
+    const p = project(
+      makeData({
+        goals: [
+          makeGoal({ id: 'payoff', targetCents: 2_000_000, priority: 1 }),
+          makeGoal({ id: 'later', targetCents: 90_000_000, priority: 2 }),
+        ],
+        income: [makeIncome({ amountCents: 10_000_000 })],
+        expenses: [
+          makeExpense({ id: 'living', amountCents: 6_000_000 }),
+          makeExpense({
+            id: 'card-sub',
+            amountCents: 1_000_000,
+            account: 'credit',
+            debtId: 'card',
+            endsWithGoalId: 'payoff',
+          }),
+        ],
+        debts: [
+          makeDebt({ id: 'card', balanceCents: 0, aprRate: 0, minPaymentCents: 1_000_000 }),
+        ],
+      }),
+    );
+    // While the subscription is live the card takes 1M a month of minimums.
+    expect(p.cashFlow.minDebtPaymentCents).toBe(1_000_000);
+    expect(p.months[0]?.debtPaidCents).toBe(1_000_000);
+    // Once the goal lands the charge stops, so the card needs nothing.
+    const after = p.months[3];
+    expect(after?.debtPaidCents).toBe(0);
+    expect(after?.debtBalanceCents).toBe(0);
+  });
+
+  it('still balances the books when an expense ends mid-plan', () => {
+    const p = project(preclosure());
+    const startingSaved = sumCents(p.goals.map((g) => g.startingSavedCents));
+    const last = p.months[p.months.length - 1];
+    expect(last?.goalBalanceCents).toBe(
+      startingSaved + p.totalContributedCents + p.totalGrowthEarnedCents,
+    );
+    for (const m of p.months) {
+      expect(m.contributedCents + m.unallocatedCents).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
 describe('debtHint', () => {
   it('tells the three debt states apart', () => {
     const noDebt = project(
