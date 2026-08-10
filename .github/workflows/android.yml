@@ -1,0 +1,122 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: ['claude/**', main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Publish the APK to a GitHub Release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Assemble and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - run: npm ci
+
+      - name: Guard the build
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build web bundle
+        run: npx vite build
+
+      - name: Copy the bundle into the native project
+        run: npx cap sync android
+
+      - name: Assemble debug APK
+        working-directory: android
+        env:
+          # A run number keeps every build installable over the previous one.
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Name the artifact
+        id: apk
+        run: |
+          SRC=android/app/build/outputs/apk/debug/app-debug.apk
+          OUT="GoalVault-1.0.${{ github.run_number }}.apk"
+          cp "$SRC" "$OUT"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "$OUT" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GoalVault-apk
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 30
+
+      - name: Publish the release
+        if: github.event_name == 'push' || inputs.release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.apk.outputs.version }}
+        run: |
+          cat > notes.md <<'NOTES'
+          ## Install on your Android phone
+
+          1. Tap the `.apk` file below on your phone.
+          2. Android will ask to allow installs from your browser — say yes.
+          3. Open **GoalVault** from your app drawer.
+
+          This is a debug-signed build for testing. Android may show a
+          "Play Protect" warning because it is not from the Play Store; choose
+          **Install anyway**. To upgrade later, just install the newer APK over
+          the top — your data stays put.
+
+          Prefer not to sideload? The web version installs from your browser and
+          works offline too — see the README for the link.
+          NOTES
+
+          printf '\nBuilt from `%s` at `%s`.\n' "$GITHUB_REF_NAME" "${GITHUB_SHA::7}" >> notes.md
+
+          gh release create "$TAG" "${{ steps.apk.outputs.path }}" \
+            --title "GoalVault ${{ steps.apk.outputs.version }}" \
+            --notes-file notes.md \
+            --latest
+
+      - name: Summarise
+        if: always()
+        env:
+          TAG: v${{ steps.apk.outputs.version }}
+        run: |
+          {
+            echo "## GoalVault ${{ steps.apk.outputs.version }}"
+            echo
+            echo "APK size: ${{ steps.apk.outputs.size }}"
+            echo
+            echo "Download: https://github.com/${GITHUB_REPOSITORY}/releases/latest"
+          } >> "$GITHUB_STEP_SUMMARY"
