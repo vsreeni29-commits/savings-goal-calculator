@@ -167,7 +167,18 @@ export default function Dashboard({
         />
       </Card>
 
-      <Card title="Savings over time">
+      <Card
+        title="Savings over time"
+        action={
+          <button
+            type="button"
+            className="btn btn--sm btn--ghost"
+            onClick={() => onNavigate('forecast')}
+          >
+            Full forecast
+          </button>
+        }
+      >
         <ProjectionChart months={projection.months} currency={currency} locale={locale} />
       </Card>
 

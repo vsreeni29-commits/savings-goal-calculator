@@ -78,6 +78,20 @@ to attack the most expensive balance (avalanche) or the smallest (snowball).
 When a card's interest and spending outrun the payments, the app says so
 instead of quietly projecting a fantasy.
 
+**Shows the whole road ahead.** The Forecast screen turns the projection into
+a timeline: a stepped chart of what you put into goals each month, a milestone
+for every goal landing that says in plain words what it changes, and a schedule
+you can read by month or by year. It is careful about one thing people conflate
+— when a goal lands, the payments tied to it stopping is genuinely new money,
+while the amount that goal was absorbing was already in the pool and is merely
+freed for other goals. Adding those together would double count, so they are
+always reported separately.
+
+**Exports the numbers.** Download the forecast as CSV — milestones, year by
+year, and month by month with a column per goal — and open it in Excel or
+Sheets. On a phone this goes through the share sheet, so you can drop it into
+Drive or mail it to yourself.
+
 **Any timescale.** Every figure switches between per day, per week, per month
 and per year with one tap — because "₹1,314 a day" lands differently to
 "₹40,000 a month".
@@ -104,6 +118,11 @@ behaves:
 4. Extra debt payments come off the top of that.
 5. The rest is shared across goals — deadlines first, then by your chosen rule.
 6. Goal balances earn their return, then the month's contribution lands.
+
+The simulation runs one month past the last goal on purpose. Payments tied to
+the final goal only stop the month after it lands, so without that trailing
+month the plan would never show the state it ends in — what you are left free
+to save once everything is funded.
 
 Expenses tied to a goal that finished in an earlier month are dropped from step
 2, which is what frees a precleared loan's EMI back into the pool. It is a month
@@ -132,7 +151,7 @@ Settings → Back up writes a JSON file you can restore on another phone.
 ```bash
 npm install
 npm run dev          # http://localhost:5173
-npm test             # 145 unit tests over the finance engine
+npm test             # 172 unit tests over the finance engine
 npm run typecheck
 npm run build
 ```
@@ -141,7 +160,7 @@ End-to-end walkthrough in a real browser at phone size:
 
 ```bash
 npm install --no-save playwright && npx playwright install chromium
-node tools/smoke.mjs --shots      # 30 checks; screenshots land in screenshots/
+node tools/smoke.mjs --shots      # 39 checks; screenshots land in screenshots/
 ```
 
 Native builds:
@@ -162,6 +181,7 @@ src/domain/     the finance engine — pure, framework-free, fully tested
   finance.ts      time-value-of-money formulas
   engine.ts       the month-by-month projection
   scenario.ts     what-if overrides and the reverse solve
+  forecast.ts     the forward timeline and the CSV reports
   tracking.ts     streaks, spending, milestones
   schema.ts       validation for stored and imported data
 src/store/      zustand state, persisted to the device

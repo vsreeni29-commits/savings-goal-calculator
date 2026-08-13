@@ -14,6 +14,7 @@ import type { MonthSnapshot, Projection } from '../domain/engine';
 import { formatMonthKey } from '../domain/dates';
 import { formatMoney } from '../domain/format';
 import type { MonthProgress, DaySpend } from '../domain/tracking';
+import type { Forecast } from '../domain/forecast';
 
 const W = 320;
 
@@ -456,5 +457,132 @@ export function ProgressRing({
         {Math.round(safe * 100)}
       </text>
     </svg>
+  );
+}
+
+// ------------------------------------------------------------ capacity ------
+
+/**
+ * Monthly money-into-goals over time.
+ *
+ * Drawn as a step rather than a smooth line, because that is what actually
+ * happens: the figure holds flat for months and then jumps the moment a goal
+ * lands and its payments stop. Smoothing it would hide the very thing the
+ * chart exists to show. Each jump gets a marker.
+ */
+export function CapacityChart({
+  forecast,
+  currency,
+  locale,
+  height = 160,
+}: {
+  forecast: Forecast;
+  currency: string;
+  locale: string;
+  height?: number;
+}) {
+  const gradientId = useId();
+  const rows = forecast.rows;
+
+  if (rows.length < 2) {
+    return (
+      <div className="small faint">
+        The forecast appears once there is money going into a goal.
+      </div>
+    );
+  }
+
+  const max = Math.max(...rows.map((r) => r.poolCents), 1);
+  const padTop = 10;
+  const padBottom = 22;
+  const plotHeight = height - padTop - padBottom;
+
+  const x = (i: number) => (i / (rows.length - 1)) * W;
+  const y = (cents: number) => padTop + plotHeight - (cents / max) * plotHeight;
+
+  // Build the step path: across at the current level, then up or down.
+  const steps: string[] = [];
+  rows.forEach((row, i) => {
+    const px = x(i);
+    const py = y(row.poolCents);
+    if (i === 0) steps.push(`M${px.toFixed(2)} ${py.toFixed(2)}`);
+    else {
+      steps.push(`L${px.toFixed(2)} ${y(rows[i - 1]?.poolCents ?? 0).toFixed(2)}`);
+      steps.push(`L${px.toFixed(2)} ${py.toFixed(2)}`);
+    }
+  });
+  const line = steps.join(' ');
+  const area = `${line} L${W} ${padTop + plotHeight} L0 ${padTop + plotHeight} Z`;
+
+  const markers = forecast.events
+    .map((event) => {
+      const index = rows.findIndex((r) => r.month === event.month);
+      return index < 0 ? null : { event, x: x(index), y: y(rows[index]?.poolCents ?? 0) };
+    })
+    .filter((m): m is { event: Forecast['events'][number]; x: number; y: number } => m !== null);
+
+  return (
+    <div>
+      <svg
+        className="chart"
+        viewBox={`0 0 ${W} ${height}`}
+        height={height}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`Monthly saving rising from ${formatMoney(
+          forecast.startingPoolCents,
+          currency,
+          locale,
+        )} to ${formatMoney(forecast.peakPoolCents, currency, locale)}`}
+      >
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent-2)" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="var(--accent-2)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75].map((f) => (
+          <line
+            key={f}
+            x1="0"
+            x2={W}
+            y1={padTop + plotHeight * f}
+            y2={padTop + plotHeight * f}
+            stroke="var(--border)"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        <path d={area} fill={`url(#${gradientId})`} />
+        <path
+          d={line}
+          fill="none"
+          stroke="var(--accent-2)"
+          strokeWidth="2"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        {markers.map((m) => (
+          <g key={`${m.event.goalId}-${m.event.month}`}>
+            <line
+              x1={m.x}
+              x2={m.x}
+              y1={padTop}
+              y2={padTop + plotHeight}
+              stroke={m.event.color}
+              strokeWidth="1"
+              strokeDasharray="3 3"
+              opacity="0.55"
+              vectorEffect="non-scaling-stroke"
+            />
+            <circle cx={m.x} cy={m.y} r="3.5" fill={m.event.color} />
+          </g>
+        ))}
+      </svg>
+      <div className="row row--between tiny faint" style={{ marginTop: 4 }}>
+        <span>{formatMoney(forecast.startingPoolCents, currency, locale, { compact: true })} now</span>
+        <span>{formatMoney(forecast.peakPoolCents, currency, locale, { compact: true })} peak</span>
+      </div>
+    </div>
   );
 }
