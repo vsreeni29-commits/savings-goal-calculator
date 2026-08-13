@@ -6,16 +6,18 @@ import GoalsScreen from './screens/GoalsScreen';
 import MoneyScreen from './screens/MoneyScreen';
 import TrackScreen from './screens/TrackScreen';
 import PlanScreen from './screens/PlanScreen';
+import ForecastScreen from './screens/ForecastScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import Onboarding from './screens/Onboarding';
 
-export type Tab = 'home' | 'goals' | 'money' | 'track' | 'plan';
+export type Tab = 'home' | 'goals' | 'money' | 'forecast' | 'track' | 'plan';
 export type Route = Tab | 'settings';
 
 const TABS: { id: Tab; label: string; glyph: string }[] = [
   { id: 'home', label: 'Home', glyph: '🏠' },
   { id: 'goals', label: 'Goals', glyph: '🎯' },
   { id: 'money', label: 'Money', glyph: '💳' },
+  { id: 'forecast', label: 'Forecast', glyph: '📈' },
   { id: 'track', label: 'Track', glyph: '🔥' },
   { id: 'plan', label: 'What if', glyph: '🎛️' },
 ];
@@ -74,6 +76,7 @@ function Shell({ route, setRoute }: { route: Route; setRoute: (route: Route) => 
         )}
         {route === 'goals' && <GoalsScreen projection={projection} />}
         {route === 'money' && <MoneyScreen projection={projection} />}
+        {route === 'forecast' && <ForecastScreen projection={projection} />}
         {route === 'track' && <TrackScreen projection={projection} />}
         {route === 'plan' && <PlanScreen projection={projection} />}
         {route === 'settings' && <SettingsScreen onBack={() => setRoute('home')} />}

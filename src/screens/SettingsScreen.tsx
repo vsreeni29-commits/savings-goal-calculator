@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { CURRENCIES } from '../domain/format';
+import { saveTextFile } from '../store/exportFile';
 import { formatMonthKey, currentMonthKey } from '../domain/dates';
 import {
   Card,
@@ -28,18 +29,15 @@ export default function SettingsScreen({ onBack }: { onBack: () => void }) {
   const [toast, showToast] = useToast();
   const [importError, setImportError] = useState<string | null>(null);
 
-  const download = () => {
-    const blob = new Blob([exportJson()], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `goalvault-${currentMonthKey()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    // Revoking immediately can cancel the download on some mobile browsers.
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    showToast('Backup saved');
+  const download = async () => {
+    // Goes through the shared helper because an <a download> does nothing
+    // inside the phone app — there is no browser download manager there.
+    const result = await saveTextFile(`goalvault-${currentMonthKey()}.json`, exportJson(), {
+      mimeType: 'application/json',
+      title: 'GoalVault backup',
+    });
+    if (result.ok) showToast(result.how === 'share' ? 'Choose where to save it' : 'Backup saved');
+    else if (result.error !== 'cancelled') showToast(result.error);
   };
 
   const pickFile = async (file: File) => {
@@ -157,7 +155,12 @@ export default function SettingsScreen({ onBack }: { onBack: () => void }) {
         </p>
 
         <div className="row" style={{ gap: 10 }}>
-          <button type="button" className="btn" style={{ flex: 1 }} onClick={download}>
+          <button
+            type="button"
+            className="btn"
+            style={{ flex: 1 }}
+            onClick={() => void download()}
+          >
             Back up
           </button>
           <button

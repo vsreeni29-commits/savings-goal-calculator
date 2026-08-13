@@ -120,6 +120,28 @@ export interface MonthSnapshot {
   unallocatedCents: Cents;
   /** Per-goal balances, keyed by goal id. */
   perGoalCents: Record<string, Cents>;
+
+  incomeCents: Cents;
+  /** Expenses that left the bank account this month. */
+  cashExpenseCents: Cents;
+  /** Income less cash expenses, minimums and buffer. Can be negative. */
+  surplusCents: Cents;
+  /** Surplus earmarked for the plan after the savings factor. */
+  savableCents: Cents;
+  /**
+   * Money available to goals this month — what was contributed plus anything
+   * left over. This is the figure that steps up when a goal frees an expense.
+   */
+  poolCents: Cents;
+  /**
+   * Monthly outgoings that have stopped since the plan began, because the
+   * goals tied to them have landed.
+   */
+  freedExpenseCents: Cents;
+  /** Goals that reached their target in this month. */
+  completedGoalIds: string[];
+  /** What each goal received this month, keyed by goal id. */
+  perGoalContributionCents: Record<string, Cents>;
 }
 
 export interface GoalProjection {
@@ -632,6 +654,9 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
   const expenseLines = buildExpenseLines(data);
   const endedGoalIds = alreadyFundedGoalIds(data);
   let expenses = totalExpenses(expenseLines, endedGoalIds);
+  // What the plan starts out paying every month, so later months can report
+  // how much of it has since stopped.
+  const baselineOutgoingsCents = expenses.debitCents + expenses.creditCents;
 
   const goalStates: GoalState[] = activeGoals(data.goals)
     .slice()
@@ -698,6 +723,7 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
   let totalContributed = 0;
   let unfundedDeficit = 0;
   let sawDeficit = false;
+  let settledMonths = 0;
 
   const allGoalsDone = (): boolean => goalStates.every((g) => g.completedIndex !== null);
 
@@ -727,7 +753,8 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
       return due;
     });
 
-    let cash = incomeCents - expenses.cashCents - minimumsDue - bufferCents;
+    const surplusCents = incomeCents - expenses.cashCents - minimumsDue - bufferCents;
+    let cash = surplusCents;
 
     if (cash < 0) {
       // The month does not balance. Real people put the gap on a card; if
@@ -810,6 +837,8 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
     );
 
     let monthContributed = 0;
+    const completedThisMonth: string[] = [];
+    const perGoalContributionCents: Record<string, Cents> = {};
     for (let i = 0; i < goalStates.length; i += 1) {
       const g = goalStates[i];
       if (!g) continue;
@@ -818,6 +847,7 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
         g.firstMonthRequirement = required[i] ?? 0;
       }
       const amount = allocation[i] ?? 0;
+      perGoalContributionCents[g.goal.id] = amount;
       if (amount > 0) {
         g.balance = addCents(g.balance, amount);
         g.contributed = addCents(g.contributed, amount);
@@ -825,6 +855,7 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
       }
       if (g.completedIndex === null && g.balance >= g.goal.targetCents) {
         g.completedIndex = index;
+        completedThisMonth.push(g.goal.id);
       }
     }
     totalContributed = addCents(totalContributed, monthContributed);
@@ -843,11 +874,27 @@ export function project(data: AppData, options: ProjectOptions = {}): Projection
       growthCents: monthGrowth,
       unallocatedCents: leftover,
       perGoalCents,
+      incomeCents,
+      cashExpenseCents: expenses.cashCents,
+      surplusCents,
+      savableCents: savable,
+      poolCents: toGoals,
+      freedExpenseCents: maxZero(
+        baselineOutgoingsCents - (expenses.debitCents + expenses.creditCents),
+      ),
+      completedGoalIds: completedThisMonth,
+      perGoalContributionCents,
     });
 
-    // Stop once everything the user is tracking has landed. Keep a couple of
-    // trailing months so charts do not end abruptly on the finish line.
-    if (allGoalsDone() && debtStates.every((d) => d.balance <= 0)) break;
+    // Stop once everything the user is tracking has landed — but run one month
+    // past it. Expenses tied to the final goal are released the month after it
+    // completes, so without that trailing month the plan would never show the
+    // steady state it ends in: what you are left free to save once every goal
+    // is funded and every linked payment has stopped.
+    if (allGoalsDone() && debtStates.every((d) => d.balance <= 0)) {
+      settledMonths += 1;
+      if (settledMonths >= 2) break;
+    }
   }
 
   // -------------------------------------------------------------------------

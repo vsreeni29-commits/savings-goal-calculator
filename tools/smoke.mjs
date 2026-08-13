@@ -76,6 +76,7 @@ async function main() {
   });
 
   const context = await browser.newContext({
+    acceptDownloads: true,
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
     isMobile: true,
@@ -214,6 +215,59 @@ async function main() {
       'the freed amount matches the expense',
       /60,000/.test((await frees.textContent()) ?? ''),
       (await frees.textContent()) ?? '',
+    );
+
+    console.log('\nForecast');
+    await page.click('.tabbar__item:has-text("Forecast")');
+    await page.waitForSelector('text=Monthly saving over time');
+    const capacity = await page.textContent('.hero__value');
+    check('the forecast shows a monthly figure', /₹/.test(capacity ?? ''), capacity ?? '');
+    check(
+      'the capacity chart steps up when the expense stops',
+      /→/.test(capacity ?? ''),
+      capacity ?? '',
+    );
+
+    // The house deposit is the goal the living-costs expense was tied to, so
+    // its milestone is the one that should mention a payment stopping.
+    const milestone = await page
+      .locator('.milestone', { hasText: 'House deposit' })
+      .textContent();
+    check(
+      'the linked goal explains what it frees',
+      /a month of payments stops/.test(milestone ?? ''),
+      (milestone ?? '').slice(0, 110),
+    );
+    const tripMilestone = await page
+      .locator('.milestone', { hasText: 'Japan trip' })
+      .textContent();
+    check(
+      'a goal with nothing tied to it does not claim to free a payment',
+      !/payments stops/.test(tripMilestone ?? ''),
+      (tripMilestone ?? '').slice(0, 110),
+    );
+    check('the schedule table renders', (await page.locator('.table tbody tr').count()) > 0);
+
+    await page.click('.segmented__item:has-text("Yearly")');
+    await page.waitForTimeout(150);
+    check('the yearly view renders', (await page.locator('.table tbody tr').count()) > 0);
+
+    const [csv] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('button:has-text("Everything in one file")'),
+    ]);
+    const csvPath = await csv.path();
+    const csvBody = csvPath ? await readFile(csvPath, 'utf8') : '';
+    check('the report downloads', csv.suggestedFilename().endsWith('.csv'), csv.suggestedFilename());
+    check(
+      'the report carries all three tables',
+      csvBody.includes('MILESTONES') && csvBody.includes('YEAR BY YEAR') && csvBody.includes('MONTH BY MONTH'),
+      `${csvBody.length} bytes`,
+    );
+    check(
+      'the report has a column for the goal',
+      csvBody.includes('House deposit (INR)'),
+      csvBody.split('\r\n').find((l) => l.includes('Month #'))?.slice(0, 80) ?? '',
     );
 
     console.log('\nTracking');

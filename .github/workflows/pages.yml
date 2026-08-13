@@ -2,7 +2,10 @@ name: Deploy web app
 
 on:
   push:
-    branches: ['claude/**', main]
+    # The live site is only ever built from the default branch. Deploying from
+    # a feature branch would either be blocked by the github-pages environment
+    # or, worse, publish unreviewed work over the real site.
+    branches: [main]
     paths-ignore:
       - '**.md'
   workflow_dispatch:
